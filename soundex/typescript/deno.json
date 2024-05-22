@@ -1,0 +1,30 @@
+{
+  "imports": {
+    "@std/": "https://deno.land/std@0.213.0/"
+  },
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "dom"
+    ]
+  },
+  "lint": {
+    "include": ["src/"],
+    "exclude": ["dist/", "node_modules/", ".vscode/", "src/**/*.test.ts"],
+    "rules": {
+      "include": [
+        "eqeqeq",
+        "explicit-module-boundary-types",
+        "no-eval",
+        "no-undef",
+        "verbatim-module-syntax"
+      ],
+      "tags": [
+        "recommended"
+      ]
+    }
+  },
+  "fmt": {
+    "include": ["src/"]
+  }
+}
