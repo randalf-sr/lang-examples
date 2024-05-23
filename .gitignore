@@ -110,3 +110,4 @@ src/npm
 **/*.bat
 **/*.cmd
 *.sln
+**/*.class
