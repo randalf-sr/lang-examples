@@ -42,19 +42,12 @@ public static class Soundex
         return result.Append('0', 4 - result.Length).ToString(); // pad with zeros
     }
 
-    private static readonly Func<char, byte> getPhonetic;
+    private static readonly byte[] phoneticMap =
+        [0, 1, 2, 3, 0, 1, 2, 0, 0, 2, 2, 4, 5, 5, 0, 1, 2, 6, 2, 3, 0, 1, 0, 2, 0, 2];
 
-    static Soundex()
+    private static byte getPhonetic(char c)
     {
-        var phoneticMap = new byte[26]
-        {
-            0, 1, 2, 3, 0, 1, 2, 0, 0, 2, 2, 4, 5, 5, 0, 1, 2, 6, 2, 3, 0, 1, 0, 2, 0, 2
-        };
-
-        getPhonetic = c =>
-        {
-            c = char.ToUpper(c);
-            return c is < 'A' or > 'Z' ? NO_VALUE : phoneticMap[c - 'A'];
-        };
+        c = char.ToUpper(c);
+        return c is < 'A' or > 'Z' ? NO_VALUE : phoneticMap[c - 'A'];
     }
 }

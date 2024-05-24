@@ -111,3 +111,8 @@ src/npm
 **/*.cmd
 *.sln
 **/*.class
+**/*.pdb
+
+**/rust/**/target
+**/Cargo.lock
+**/java/**/target
