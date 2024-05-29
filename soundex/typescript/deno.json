@@ -9,7 +9,7 @@
     ]
   },
   "lint": {
-    "include": ["src/"],
+    "include": ["./"],
     "exclude": ["dist/", "node_modules/", ".vscode/", "src/**/*.test.ts"],
     "rules": {
       "include": [
@@ -25,6 +25,6 @@
     }
   },
   "fmt": {
-    "include": ["src/"]
+    "include": ["./"]
   }
 }

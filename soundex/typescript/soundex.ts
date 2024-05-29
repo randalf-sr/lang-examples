@@ -3,7 +3,7 @@
  * @param word - The word string to convert.
  * @returns The Soundex representation of the provided word.
  */
-export function soundex(word: string) {
+export function soundex(word: string): string {
   assert(word && word.length > 0, '`value` must be a non-empty string')
 
   let result = word.charAt(0).toUpperCase() // first letter is always included

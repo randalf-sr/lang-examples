@@ -1,6 +1,6 @@
 {
     "java.project.sourcePaths": [
-        "soundex\\java\\src"
+        "soundex/java/src"
     ],
     "java.project.referencedLibraries": []
 }
