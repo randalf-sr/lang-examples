@@ -1,0 +1,12 @@
+/**
+ * To create executable run below from command line:
+ * deno compile --allow-read --allow-write touch.ts
+ */
+{
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "dom"
+    ]
+  }
+}
