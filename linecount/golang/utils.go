@@ -9,13 +9,10 @@ import (
 	"runtime"
 )
 
-func init() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-}
-
 func parseArgs() Config {
 	filePath := flag.String("f", "", "file path.")
 	chunkSize := flag.Int("c", 4*1024*1024, "chunk size.")
+	maxConcurrency := flag.Int("m", runtime.NumCPU(), "max concurrency.")
 
 	flag.Parse()
 
@@ -29,6 +26,11 @@ func parseArgs() Config {
 		os.Exit(1)
 	}
 
+	if *maxConcurrency <= 0 {
+		fmt.Println("Max concurrency must be greater than 0.")
+		os.Exit(1)
+	}
+
 	fileInfo, err := os.Stat(*filePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -39,10 +41,13 @@ func parseArgs() Config {
 		os.Exit(1)
 	}
 
+	runtime.GOMAXPROCS(*maxConcurrency)
+
 	return Config{
-		info:      fileInfo,
-		filePath:  *filePath,
-		chunkSize: *chunkSize,
+		info:           fileInfo,
+		filePath:       *filePath,
+		chunkSize:      *chunkSize,
+		maxConcurrency: *maxConcurrency,
 	}
 }
 

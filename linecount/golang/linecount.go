@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -46,7 +45,7 @@ func countLines(cfg Config, start int64, end int64, wg *sync.WaitGroup, lineCoun
 }
 
 func doCount(cfg Config) int64 {
-	partitions := runtime.NumCPU()
+	partitions := cfg.maxConcurrency
 	partitionSize := (cfg.info.Size() + int64(partitions) - 1) / int64(partitions)
 	lineCountChan := make(chan int64, partitions)
 
@@ -80,12 +79,13 @@ func printResults(cfg Config, linesCounted int64, start time.Time) {
 	fmt.Printf("   File name: %s\n", cfg.info.Name())
 	fmt.Printf("   File size: %s\n", formatToKb(cfg.info.Size()))
 	fmt.Printf("  Line count: %s\n", formatCommas(linesCounted))
-	fmt.Printf("  Cores used: %d\n", runtime.NumCPU())
+	fmt.Printf("  Cores used: %d\n", cfg.maxConcurrency)
 	fmt.Printf("Time elapsed: %.dm\n", time.Since(start).Milliseconds())
 }
 
 type Config struct {
-	info      fs.FileInfo
-	filePath  string
-	chunkSize int
+	info           fs.FileInfo
+	filePath       string
+	chunkSize      int
+	maxConcurrency int
 }
