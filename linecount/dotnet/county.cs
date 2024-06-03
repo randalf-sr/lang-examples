@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net;
 
 class Program
 {
@@ -8,21 +7,21 @@ class Program
     // since the goal is to count as fast as possible, will use blocking API's for
     // reads versus using async IO methods (though there may be soem overallping 
     // IO caching bits that I could be missing out on in windows by doing this)
-    private static void CountLines(Config cfg, long start, long end, Action starting, Action<long> done)
+    private static long CountLines(
+        string filePath, int chunkSize, long start = 0, long end = long.MaxValue
+    )
     {
         var lineCount = 0L;
         try
         {
-            starting();
-
-            using var fs = new FileStream(cfg.FilePath, FileMode.Open, FileAccess.Read,
-                FileShare.Read, bufferSize: cfg.ChunkSize, FileOptions.SequentialScan
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read,
+                FileShare.Read, bufferSize: chunkSize, FileOptions.SequentialScan
             );
 
             fs.Seek(start, SeekOrigin.Begin);
 
             var currentPos = start;
-            var bufSize = end - start < cfg.ChunkSize ? (end - start) : cfg.ChunkSize;
+            var bufSize = end - start < chunkSize ? (end - start) : chunkSize;
             var buf = new Span<byte>(new byte[bufSize]);
             do
             {
@@ -43,7 +42,7 @@ class Program
             Console.WriteLine($"Error: {e.Message}");
         }
 
-        done(lineCount);
+        return lineCount;
     }
 
     private static (long totalLines, TimeSpan elapsedTime) DoCount(Config cfg)
@@ -51,31 +50,40 @@ class Program
         // I am being a bit pedantic about the start/stop due to some issues 
         // locally when starting up the runtime (e.g. I need to ensure things 
         // are primed before starting the stopwatch)
-        using var counter = new CountdownCounter(cfg.MaxConcurrency);
-        var stopwatch = new BarrierStopwatch(cfg.MaxConcurrency);
-
-        var starting = stopwatch.SignalStartAndWait;
-        var done = new Action<long>(count =>
-        {
-            counter.IncrementAndSignal(count);
-            stopwatch.SignalStop();
-        });
-
+        using var executor = new ExecutionTimer(cfg.MaxConcurrency);
         var fileSize = new FileInfo(cfg.FilePath).Length;
+        var totalLines = 0L;
         var partitionSize = (fileSize + cfg.MaxConcurrency - 1) / cfg.MaxConcurrency;
         for (var i = 0; i < cfg.MaxConcurrency; i++)
         {
             var start = i * partitionSize;
             var end = Math.Min(start + partitionSize, fileSize);
-            ThreadPool.QueueUserWorkItem(_ => CountLines(cfg, start, end, starting, done));
+            executor.EnqueueAction(() =>
+            {
+                Interlocked.Add(
+                    ref totalLines,
+                    CountLines(cfg.FilePath, cfg.ChunkSize, start, end)
+                );
+            });
         }
 
-        counter.Wait();
+        executor.Wait();
 
-        return (counter.Count, stopwatch.Elapsed);
+        return (totalLines, executor.Elapsed);
     }
 
     static void Main(string[] args)
+    {
+        var cfg = ParseArgs(args);
+        var (totalLines, elapsedTime) = DoCount(cfg);
+
+        Console.WriteLine($"  Total lines: {totalLines}");
+        Console.WriteLine($"Total threads: {cfg.MaxConcurrency}");
+        Console.WriteLine($"    File size: {GetFileSize(cfg.FilePath)}");
+        Console.WriteLine($" Time elapsed: {elapsedTime.Milliseconds} millis");
+    }
+
+    private static Config ParseArgs(string[] args)
     {
         if (args.Length < 1)
         {
@@ -112,19 +120,12 @@ class Program
             }
         }
 
-        var cfg = new Config
+        return new Config
         {
             FilePath = args[0],
             ChunkSize = chunkSize,
             MaxConcurrency = maxConcurrency
         };
-
-        var (totalLines, elapsedTime) = DoCount(cfg);
-
-        Console.WriteLine($"  Total lines: {totalLines}");
-        Console.WriteLine($"Total threads: {maxConcurrency}");
-        Console.WriteLine($"    File size: {GetFileSize(cfg.FilePath)}");
-        Console.WriteLine($" Time elapsed: {elapsedTime.Milliseconds} millis");
     }
 
     private static string GetFileSize(string filePath)
@@ -155,54 +156,52 @@ class Program
         public int MaxConcurrency { get; init; }
     }
 
-    private sealed class BarrierStopwatch(int count)
+    private sealed class ExecutionTimer : IDisposable
     {
-        private readonly Barrier _barrier = new(count);
-        private readonly Stopwatch _stopwatch = new();
-        private int running;
+        private readonly Stopwatch stopwatch = new();
+        private readonly CountdownEvent countdown;
+        private readonly Barrier barrier;
+        private int enqueued = 0;
 
-        public void SignalStartAndWait()
+        public ExecutionTimer(int executionCount)
         {
-            if (Interlocked.Increment(ref running) == count)
-            {
-                _stopwatch.Start();
-            }
-            _barrier.SignalAndWait();
+            this.countdown = new CountdownEvent(executionCount);
+            this.barrier = new Barrier(executionCount, _ => stopwatch.Start());
         }
 
-        public void SignalStop()
+        public void EnqueueAction(Action action)
         {
-            if (Interlocked.Decrement(ref running) == 0)
+            if (Interlocked.Increment(ref enqueued) > countdown.InitialCount)
             {
-                _stopwatch.Stop();
+                throw new InvalidOperationException("Cannot enqueue more than the initial count");
             }
-        }
 
-        public TimeSpan Elapsed
-        {
-            get
+            ThreadPool.QueueUserWorkItem(_ =>
             {
-                lock (_stopwatch)
+                try
                 {
-                    return _stopwatch.Elapsed;
+                    barrier.SignalAndWait();
+                    action();
                 }
-            }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Error: {e.Message}");
+                }
+                finally
+                {
+                    if (countdown.Signal()) stopwatch.Stop();
+                }
+            });
         }
-    }
 
-    private sealed class CountdownCounter(int initialCount) : IDisposable
-    {
-        private long _counter;
-        private readonly CountdownEvent _countdownEvent = new(initialCount);
+        public void Wait() => countdown.Wait();
 
-        public void IncrementAndSignal(long count)
+        public TimeSpan Elapsed => stopwatch.Elapsed;
+
+        public void Dispose()
         {
-            Interlocked.Add(ref _counter, count);
-            _countdownEvent.Signal();
+            countdown.Dispose();
+            barrier.Dispose();
         }
-
-        public void Wait() => _countdownEvent.Wait();
-        public long Count => _counter;
-        public void Dispose() => _countdownEvent.Dispose();
     }
 }
